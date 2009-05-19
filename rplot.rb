@@ -256,7 +256,17 @@ class TimeTicker < Ticker
       value += @step
     end
   end
+end
 
+class SmartTimeTicker < TimeTicker
+  def initialize
+    super(0, 0)
+  end
+
+  def each(min, max)
+    # compute time distance and automatically pick the
+    # smartest format, alignment, and step.
+  end
 end
 
 class StandardTicker < Ticker
@@ -278,7 +288,7 @@ end
 
 graph = RPlot.new(400, 200, "Happy Graph")
 
-points = 60
+points = 65 
 axis = GraphAxis.new
 (1..points).each do |i| 
   axis.points << [Time.now.to_f + i*3600, Math.log(i)]
