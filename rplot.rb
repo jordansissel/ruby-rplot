@@ -41,8 +41,10 @@ module RPlot
         end
       end
 
-      @attrs.grid_y_step = @attrs.distance_y / 5
-      @attrs.grid_x_step = @attrs.distance_x / 30
+      # If we want to expand the viewport, now is the time to do it.
+      @attrs.min_y = 0
+      #@attrs.max_y += (@attrs.max_y * 0.1)
+      @attrs.max_y = 100
     end
 
     def render(output)
@@ -78,6 +80,16 @@ module RPlot
         .styles(:stroke => "black", :stroke_width => 1, :fill => "#E8F8F8")
       rvg.text(@attrs.width / 2, 20, @title) \
         .styles(:text_anchor => "middle", :font_size => 16)
+
+      xclasses = @xtickers.collect { |t| t.class }
+      if xclasses.include?(RPlot::TimeTicker) or xclasses.include?(RPlot::SmartTimeTicker)
+
+        tstart = Time.at(@attrs.min_x).strftime("%Y/%m/%d %H:%M")
+        tend= Time.at(@attrs.max_x).strftime("%Y/%m/%d %H:%M")
+        rvg.text(@attrs.width - 4, 4, "#{tstart} - #{tend}") \
+          .rotate(-90) \
+          .styles(:text_anchor => "end", :font_size => 10, :fill => "#333333") \
+      end
       return rvg
     end
 
@@ -87,8 +99,8 @@ module RPlot
       rvg = Magick::RVG.new(width, height) do |canvas|
         canvas.rect(width, height, 0, 0) \
           .styles(:stroke => "none", :fill => "white")
-        #grid = render_grid
-        #canvas.use(grid, 0, 0)
+        grid = render_grid
+        canvas.use(grid, 0, 0)
 
         @sources.each do |source|
           data = source.render(width, height, @attrs)
@@ -105,11 +117,22 @@ module RPlot
       width = @attrs.width - 100
       height = @attrs.height - 60
       rvg = Magick::RVG.new(width, height)
-      y = @attrs.grid_y_step / @attrs.ratio_y(height)
-      while (y < height)
-        rvg.polyline(0, y, width, y) \
-          .styles(:stroke => "#C8CECE", :stroke_width => 1)
-        y += @attrs.grid_y_step / @attrs.ratio_y(height)
+      @ytickers.each do |ticker|
+        ticker.each(@attrs.min_y, @attrs.max_y) do |tick|
+          y = @attrs.translate(0, tick.value, 0, height)[1].to_i
+          rvg.polyline(0, y, width, y) \
+            .styles(:stroke => "#F0F0F0", :stroke_width => 1,
+                   :stroke_dasharray => [3, 1])
+        end
+      end
+
+      @xtickers.each do |ticker|
+        ticker.each(@attrs.min_x, @attrs.max_x) do |tick|
+          x = @attrs.translate(tick.value, 0, width, height)[0].to_i
+          rvg.polyline(x, 0, x, height) \
+            .styles(:stroke => "#F0F0F0", :stroke_width => 1,
+                   :stroke_dasharray => [3, 1])
+        end
       end
       return rvg
     end
@@ -119,12 +142,14 @@ module RPlot
       height = height
       rvg = Magick::RVG.new(width, height)
       @ytickers.each do |ticker|
-        ticker.each(@attrs.vis_min(@attrs.min_y), @attrs.vis_max(@attrs.max_y)) do |tick|
-          y = @attrs.translate(0, tick.value, 0, height)[1]
+        ticker.each(@attrs.min_y, @attrs.max_y) do |tick|
+          y = @attrs.translate(0, tick.value, 0, height)[1].to_i
           rvg.polyline(width, y, width - tick.ticklength, y) \
             .styles(:stroke => "black", :stroke_width => tick.tickwidth)
-          rvg.text(width-10, y, tick.label.to_s) \
-            .styles(:text_anchor => "end", :baseline_shift => "100%")
+          if tick.label
+            rvg.text(width-10, y, tick.label.to_s) \
+              .styles(:text_anchor => "end", :baseline_shift => "100%")
+          end
         end
       end
       return rvg
@@ -138,12 +163,14 @@ module RPlot
       count = 0
       @xtickers.each do |ticker|
         ticker.each(@attrs.min_x, @attrs.max_x) do |tick|
-          x = @attrs.translate(tick.value, 0, width, 0)[0]
+          x = @attrs.translate(tick.value, 0, width, 0)[0].to_i
           rvg.polyline(x, 0, x, tick.ticklength) \
             .styles(:stroke => "black", :stroke_width => tick.tickwidth)
-          rvg.text(x, 15, tick.label) \
-            .styles(:text_anchor => "middle",
-                    :baseline_shift => "#{125 * (count + tick.depth)}%")
+          if tick.label
+            rvg.text(x, 15, tick.label) \
+              .styles(:text_anchor => "middle",
+                      :baseline_shift => "#{125 * (count + tick.depth)}%")
+          end
         end
         count += 1
       end
@@ -179,16 +206,16 @@ class PlotAttributes
 
   def ratio_y(val=@height)
     #return vis_max(distance_y) / val.to_f
+    #return 0 if val.to_f == 0
+    #return distance_y / Math.log(val.to_f)
     return distance_y / val.to_f
   end
 
   def vis_min(value)
-    puts "vismin: #{value}"
     return value - (value.abs * 0.1)
   end
 
   def vis_max(value)
-    puts "vismax: #{value}"
     return value + (value.abs * 0.1)
   end
 
@@ -203,7 +230,7 @@ class PlotAttributes
   end
 end
 
-graph = RPlot::Graph.new(400, 200, "Happy Graph")
+graph = RPlot::Graph.new(400, 200, "Ping results for www.google.com")
 
 points = 65 
 source1 = RPlot::ArrayDataSource.new
@@ -222,11 +249,16 @@ source2 = RPlot::ArrayDataSource.new
   source2.points << [start + i * mul, Math.sin((i / 5.0 - 1).to_f) + 1]
 end
 
-graph.sources << source1
-graph.sources << source2
-#graph.xtickers << RPlot::TimeTicker.new("%H:%M", alignment=3600, step=60*60*12)
-#graph.xtickers << RPlot::TimeTicker.new("%b %d", alignment=60*60, step=60*60*24)
-graph.xtickers << RPlot::SmartTimeTicker.new
-graph.ytickers << RPlot::StandardTicker.new(alignment=1, step=1)
+#graph.sources << source1
+#graph.sources << source2
 
+pingsource = RPlot::ArrayDataSource.new
+File.open("/b/pingdata").each do |line|
+  time,latency = line.split.collect
+  pingsource.points << [time.to_f, latency.to_f]
+end
+pingsource.points = pingsource.points[-300..-1]
+graph.sources << pingsource
+graph.xtickers << RPlot::SmartTimeTicker.new
+graph.ytickers << RPlot::LabeledTicker.new(alignment=0, step=25)
 graph.render("/home/jls/public_html/test.png")

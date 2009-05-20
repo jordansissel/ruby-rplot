@@ -20,11 +20,11 @@ module RPlot
       # Fill under the curve by making a polygon of the line; prepending
       # the origin and appending the largest viewable X value + y origin
       rvg.polygon(*([[0, height], transpoints, [width, height] ].flatten)) \
-        .styles(:stroke => "none", :fill => "#F3F3D9", :fill_opacity => 0.8)
+        .styles(:stroke => "none", :fill => "#D9F9D9", :fill_opacity => 0.8)
         
       # Draw the line
       rvg.polyline(*(transpoints.flatten)) \
-        .styles(:stroke_width => 1, :stroke => "red", :fill => "none")
+        .styles(:stroke_width => 1, :stroke => "green", :fill => "none")
         
       # Use bezier curves? This makes the data draw funnily.
       #p = "M#{transpoints.first[0]},#{transpoints.first[1]} "
@@ -32,9 +32,9 @@ module RPlot
       #rvg.path(p).styles(:fill => "none", :stroke => "green")
 
       # Put a dot at each data point
-      transpoints.each do |x,y|
-        rvg.circle(1, x, y)
-      end
+      #transpoints.each do |x,y|
+        #rvg.circle(1, x, y)
+      #end
 
       return rvg
     end
@@ -47,8 +47,8 @@ module RPlot
     end
 
     def each(&block)
-      @points.each { |p| yield p }
-      #@points.each(&block)
+      #@points.each { |p| yield p }
+      @points.each(&block)
     end
   end
 
