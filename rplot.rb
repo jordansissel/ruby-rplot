@@ -3,186 +3,155 @@
 require "rubygems"
 require 'rvg/rvg'
 
+require "rplot/datasources"
+require "rplot/tickers"
 
-class RPlot
-  attr_accessor :width
-  attr_accessor :height
-  attr_accessor :title
-  attr_accessor :axes
 
-  def initialize(width, height, title)
-    @title = title
-    @axes = []
-    @attrs = PlotAttributes.new
-    @attrs.width = width
-    @attrs.height = height
-  end
+module RPlot
+  class Graph
+    attr_accessor :width
+    attr_accessor :height
+    attr_accessor :title
+    attr_accessor :sources
+    attr_accessor :xtickers
+    attr_accessor :ytickers
 
-  def analyze
-    @attrs.min_x = @axes[0].points[0][0]
-    @attrs.min_y = @axes[0].points[0][1]
-    @attrs.max_x = @axes[0].points[0][0]
-    @attrs.max_y = @axes[0].points[0][1]
-
-    @axes.each do |axis|
-      axis.points.each do |point|
-        @attrs.min_x = point[0] if point[0] < @attrs.min_x
-        @attrs.min_y = point[1] if point[1] < @attrs.min_y
-        @attrs.max_x = point[0] if point[0] > @attrs.max_x
-        @attrs.max_y = point[1] if point[1] > @attrs.max_y
-      end
+    def initialize(width, height, title)
+      @title = title
+      @attrs = PlotAttributes.new
+      @attrs.width = width
+      @attrs.height = height
+      @sources = []
+      @xtickers = []
+      @ytickers = []
     end
 
-    @attrs.grid_y_step = @attrs.distance_y / 5
-    @attrs.grid_x_step = @attrs.distance_x / 30
-  end
+    def analyze
+      @attrs.min_x = nil
+      @attrs.min_y = nil
+      @attrs.max_x = nil
+      @attrs.max_y = nil
 
-  def render(output)
-    analyze
+      @sources.each do |source|
+        source.each do |point|
+          @attrs.min_x = point[0] if (!@attrs.min_x or (point[0] < @attrs.min_x))
+          @attrs.min_y = point[1] if (!@attrs.min_y or (point[1] < @attrs.min_y))
+          @attrs.max_x = point[0] if (!@attrs.max_x or (point[0] > @attrs.max_x))
+          @attrs.max_y = point[1] if (!@attrs.max_y or (point[1] > @attrs.max_y))
+        end
+      end
 
-    # Compute min/max x and y
-    # If need grid, calculate grid spacing
-    # If need axis labels:
-    #   calculate spacing for ticks
-    rvg = Magick::RVG.new(@attrs.width, @attrs.height) do |canvas|
-      canvas.background_fill = 'white'
+      @attrs.grid_y_step = @attrs.distance_y / 5
+      @attrs.grid_x_step = @attrs.distance_x / 30
+    end
+
+    def render(output)
+      analyze
+
+      # Compute min/max x and y
+      # If need grid, calculate grid spacing
+      # If need axis labels:
+      #   calculate spacing for ticks
+      #rvg.background_fill = 'white'
       plot = render_data
-      canvas.use(render_frame)
-      canvas.use(plot, 80, 30)
 
       # Put yticks just left of the graph
       yticks = render_yticks(plot.height)
       xticks = render_xticks(plot.width)
-      canvas.use(yticks, 80 - yticks.width, 30)
-      canvas.use(xticks, 80, 30 + plot.height)
+
+      rvg = Magick::RVG.new(@attrs.width, @attrs.height)
+      rvg.use(render_frame)
+      rvg.use(plot, 80, 30)
+      rvg.use(yticks, 80 - yticks.width, 30)
+      rvg.use(xticks, 80, 30 + plot.height)
+      image = rvg.draw
+      image.write(output)
+      #x.format = "png"
+      #puts x.to_blob.length
     end
-    rvg.draw.write(output)
-  end
- 
-  def render_frame
-    rvg = Magick::RVG.new(@attrs.width, @attrs.height) do |canvas|
-      canvas.rect(@attrs.width-1, @attrs.height-1, 0, 0) \
+   
+    def render_frame
+      rvg = Magick::RVG.new(@attrs.width, @attrs.height)
+      rvg.rect(@attrs.width-1, @attrs.height-1, 0, 0) \
         .styles(:stroke => "grey", :stroke_width => 1, :fill => "white")
-      canvas.rect(@attrs.width-3, @attrs.height-3, 1, 1) \
+      rvg.rect(@attrs.width-3, @attrs.height-3, 1, 1) \
         .styles(:stroke => "black", :stroke_width => 1, :fill => "#E8F8F8")
-      canvas.text(@attrs.width / 2, 20, @title) \
-        .styles(:text_anchor => "middle",
-                :font_size => 16)
+      rvg.text(@attrs.width / 2, 20, @title) \
+        .styles(:text_anchor => "middle", :font_size => 16)
+      return rvg
     end
-    return rvg
-  end
 
-  def render_data
-    width = @attrs.width - 100
-    height = @attrs.height - 60
-    rvg = Magick::RVG.new(width, height) do |canvas|
-      canvas.rect(width, height, 0, 0) \
-        .styles(:stroke => "none", :fill => "white")
-      #grid = render_grid
-      #canvas.use(grid, 0, 0)
+    def render_data
+      width = @attrs.width - 100
+      height = @attrs.height - 60
+      rvg = Magick::RVG.new(width, height) do |canvas|
+        canvas.rect(width, height, 0, 0) \
+          .styles(:stroke => "none", :fill => "white")
+        #grid = render_grid
+        #canvas.use(grid, 0, 0)
 
-      @axes.each do |axis|
-        data = axis.render(width, height, @attrs)
-        canvas.use(data, 0, 0)
+        @sources.each do |source|
+          data = source.render(width, height, @attrs)
+          canvas.use(data, 0, 0)
+        end
+
+        canvas.rect(width, height, 0, 0) \
+          .styles(:stroke => "black", :stroke_width => 1, :fill => "none")
       end
-
-      canvas.rect(width, height, 0, 0) \
-        .styles(:stroke => "black", :stroke_width => 1, :fill => "none")
+      return rvg
     end
-    return rvg
-  end
 
-  def render_grid
-    width = @attrs.width - 100
-    height = @attrs.height - 60
-    rvg = Magick::RVG.new(width, height) do |canvas|
-      #ry = @attrs.distance_y / @attrs.grid_y_step
+    def render_grid
+      width = @attrs.width - 100
+      height = @attrs.height - 60
+      rvg = Magick::RVG.new(width, height)
       y = @attrs.grid_y_step / @attrs.ratio_y(height)
       while (y < height)
-        canvas.polyline(0, y, width, y) \
+        rvg.polyline(0, y, width, y) \
           .styles(:stroke => "#C8CECE", :stroke_width => 1)
         y += @attrs.grid_y_step / @attrs.ratio_y(height)
       end
+      return rvg
     end
-    return rvg
-  end
 
-  def render_yticks(height)
-    width = 100 
-    height = height
-    rvg = Magick::RVG.new(width, height)
-    ticker = StandardTicker.new(alignment=0, step=1)
-    ticker.each(@attrs.min_y, @attrs.max_y) do |value, label|
-      y = @attrs.translate(0, value, 0, height)[1]
-      #puts y
-      rvg.polyline(width, y, width-5, y) \
-        .styles(:stroke => "black", :stroke_width => 1)
-      rvg.text(width-10, y, label.to_s) \
-        .styles(:text_anchor => "end", :baseline_shift => "100%")
-    end
-    return rvg
-  end
-
-  def render_xticks(width)
-    width = width
-    height = 30
-    rvg = Magick::RVG.new(width, height)
-    ticker = TimeTicker.new("%H:%M", alignment=3600, step=60*60*12)
-    ticker.each(@attrs.min_x, @attrs.max_x) do |value, label|
-      x = @attrs.translate(value, 0, width, 0)[0]
-      rvg.polyline(x, 0, x, 5) \
-        .styles(:stroke => "black", :stroke_width => 1)
-      rvg.text(x, 15, label) \
-        .styles(:text_anchor => "middle")
-    end
-    return rvg
-  end
-end
-
-class GraphAxis
-  attr_accessor :points
-
-  def initialize
-    @points = []
-  end
-
-  def render(width, height, attrs)
-    # we could use 'viewbox' here to make life easy, but that changes what '1'
-    # means for stroke width, etc. Also, it doesn't invert the axis.
-    #rvg.viewbox(min_x, min_y, (max_x - min_x), (max_y - min_y)) do |canvas|
-
-    # Translate functions to convert a data point to a display point
-    #xtrans = lambda { |x| (x - attrs.min_x) / xratio }
-    # ytrans should invert, (larger 'y' means higher on the graph)
-    #ytrans = lambda { |y| height - ((y - attrs.min_y) / yratio) }
-
-    rvg = Magick::RVG.new(width, height)  do |canvas|
-      # Translate all the points, then plot with polyline.
-      transpoints = @points.collect { |x,y| attrs.translate(x, y, width, height) }
-
-      # Fill under the curve by making a polygon of the line; prepending
-      # the origin and appending the largest viewable X value + y origin
-      canvas.polygon(*([[0, height], transpoints, [width, height] ].flatten)) \
-        .styles(:stroke => "none", :fill => "#F3F3D9", :fill_opacity => 0.8)
-
-      # Draw the line
-      canvas.polyline(*(transpoints.flatten)) \
-        .styles(:stroke_width => 1, :stroke => "red", :fill => "none")
-
-      # Use bezier curves? This makes the data draw funnily.
-      #p = "M#{transpoints.first[0]},#{transpoints.first[1]} "
-      #p += "T" + transpoints.collect { |x,y| "#{x},#{y}"}.join(" ")
-      #canvas.path(p).styles(:fill => "none", :stroke => "green")
-
-      # Put a dot at each data point
-      transpoints.each do |x,y|
-        canvas.circle(1, x, y)
+    def render_yticks(height)
+      width = 100 
+      height = height
+      rvg = Magick::RVG.new(width, height)
+      @ytickers.each do |ticker|
+        ticker.each(@attrs.vis_min(@attrs.min_y), @attrs.vis_max(@attrs.max_y)) do |tick|
+          y = @attrs.translate(0, tick.value, 0, height)[1]
+          rvg.polyline(width, y, width - tick.ticklength, y) \
+            .styles(:stroke => "black", :stroke_width => tick.tickwidth)
+          rvg.text(width-10, y, tick.label.to_s) \
+            .styles(:text_anchor => "end", :baseline_shift => "100%")
+        end
       end
+      return rvg
     end
-    return rvg
-  end
-end
 
+    def render_xticks(width)
+      width = width
+      height = 30
+      rvg = Magick::RVG.new(width, height)
+      #ticker = RPlot::TimeTicker.new("%H:%M", alignment=3600, step=60*60*12)
+      count = 0
+      @xtickers.each do |ticker|
+        ticker.each(@attrs.min_x, @attrs.max_x) do |tick|
+          x = @attrs.translate(tick.value, 0, width, 0)[0]
+          rvg.polyline(x, 0, x, tick.ticklength) \
+            .styles(:stroke => "black", :stroke_width => tick.tickwidth)
+          rvg.text(x, 15, tick.label) \
+            .styles(:text_anchor => "middle",
+                    :baseline_shift => "#{125 * (count + tick.depth)}%")
+        end
+        count += 1
+      end
+      return rvg
+    end
+  end # class Graph
+end # module RPlot
+ 
 class PlotAttributes
   attr_accessor :width
   attr_accessor :height
@@ -209,7 +178,18 @@ class PlotAttributes
   end
 
   def ratio_y(val=@height)
+    #return vis_max(distance_y) / val.to_f
     return distance_y / val.to_f
+  end
+
+  def vis_min(value)
+    puts "vismin: #{value}"
+    return value - (value.abs * 0.1)
+  end
+
+  def vis_max(value)
+    puts "vismax: #{value}"
+    return value + (value.abs * 0.1)
   end
 
   # Translate points x,y into zero-origin view of width x height
@@ -223,83 +203,30 @@ class PlotAttributes
   end
 end
 
-# A ticker is a class that provides an iterator
-# that should yield tick values via 'each'
-class Ticker
-  def initialize(alignment, step)
-    @alignment = alignment
-    @step = step
-  end
-
-  def each(min, max)
-    raise "NotImplemented. You must subclass #{self.class}"
-  end
-
-  def align(value)
-    return value - (value % @alignment)
-  end
-end
-
-class TimeTicker < Ticker
-  def initialize(format, alignment=3600, step=3600)
-    @format = format
-    super(alignment, step)
-    @alignment = 1 if @alignment == 0
-  end
-
-  def each(min, max)
-    value = align(min)
-    value += @step
-    while value <= max
-      time = Time.at(value)
-      yield value, time.strftime(@format)
-      value += @step
-    end
-  end
-end
-
-class SmartTimeTicker < TimeTicker
-  def initialize
-    super(0, 0)
-  end
-
-  def each(min, max)
-    # compute time distance and automatically pick the
-    # smartest format, alignment, and step.
-  end
-end
-
-class StandardTicker < Ticker
-  def initialize(alignment, step)
-    super(alignment, step)
-    @alignment = 1 if @alignment == 0
-  end
-
-  def each(min, max)
-    value = align(min)
-    value += @step
-    while value <= max
-      yield value, "#{value} pants"
-      value += @step
-    end
-  end
-end
-
-
-graph = RPlot.new(400, 200, "Happy Graph")
+graph = RPlot::Graph.new(400, 200, "Happy Graph")
 
 points = 65 
-axis = GraphAxis.new
+source1 = RPlot::ArrayDataSource.new
+
+start = Time.now.to_f
+mul = 60*30
+
+#start = 0
+#mul = 1
 (1..points).each do |i| 
-  axis.points << [Time.now.to_f + i*3600, Math.log(i)]
+  source1.points << [start + i * mul, Math.log(i)]
 end
 
-axis2 = GraphAxis.new
+source2 = RPlot::ArrayDataSource.new
 (1..points).each do |i| 
-  axis2.points << [Time.now.to_f + i*3600, Math.sin((i / 2.0).to_f) + 1]
+  source2.points << [start + i * mul, Math.sin((i / 5.0 - 1).to_f) + 1]
 end
 
-graph.axes << axis
-graph.axes << axis2
+graph.sources << source1
+graph.sources << source2
+#graph.xtickers << RPlot::TimeTicker.new("%H:%M", alignment=3600, step=60*60*12)
+#graph.xtickers << RPlot::TimeTicker.new("%b %d", alignment=60*60, step=60*60*24)
+graph.xtickers << RPlot::SmartTimeTicker.new
+graph.ytickers << RPlot::StandardTicker.new(alignment=1, step=1)
 
-graph.render("/home/jls/public_html/test.gif")
+graph.render("/home/jls/public_html/test.png")
