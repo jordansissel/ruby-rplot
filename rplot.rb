@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
 require "rubygems"
-require 'rvg/rvg'
+require "rvg/rvg"
 
 require "rplot/datasources"
 require "rplot/tickers"
@@ -257,7 +257,7 @@ File.open("/b/pingdata").each do |line|
   time,latency = line.split.collect
   pingsource.points << [time.to_f, latency.to_f]
 end
-pingsource.points = pingsource.points[-300..-1]
+#pingsource.points = pingsource.points[-300..-1]
 graph.sources << pingsource
 graph.xtickers << RPlot::SmartTimeTicker.new
 graph.ytickers << RPlot::LabeledTicker.new(alignment=0, step=25)

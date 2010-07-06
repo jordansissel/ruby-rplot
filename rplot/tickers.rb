@@ -78,7 +78,7 @@ module RPlot
           60*15 => [TimeTicker.new("%H:%M", alignment=60, step=60*3),
                     PlainTicker.new(alignment=60, step=60)],
           60*30 => [TimeTicker.new("%H:%M", alignment=60*5, step=60*5)],
-          HOUR => [TimeTicker.new("%H:%M", alignment=60*5, step=60*5)],
+          HOUR => [TimeTicker.new("%H:%M", alignment=60*10, step=60*10)],
           3 * HOUR => [TimeTicker.new("%H:%M", alignment=60*5, step=60*5)],
           12 * HOUR => [TimeTicker.new("%H:%M", alignment=HOUR, step=HOUR*2)],
           36 * HOUR => [TimeTicker.new("%H:%M", alignment=HOUR, step=HOUR*6),
